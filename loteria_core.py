@@ -105,6 +105,83 @@ def draw_text_with_outline(draw, position, text, font, fill_color=(255, 255, 255
     draw.text((x, y), text, fill=fill_color, font=font)
 
 
+def wrap_text(text, font, max_width, draw):
+    """
+    Divide el texto en múltiples líneas si excede el ancho máximo.
+
+    Args:
+        text (str): Texto a dividir
+        font: Fuente a usar
+        max_width (int): Ancho máximo permitido
+        draw: Objeto ImageDraw para medir el texto
+
+    Returns:
+        list: Lista de líneas de texto que caben en el ancho especificado
+    """
+    # Si el texto cabe en una línea, retornarlo tal cual
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+
+    if text_width <= max_width:
+        return [text]
+
+    # Dividir texto en palabras
+    words = text.split()
+    lines = []
+    current_line = []
+
+    for word in words:
+        # Probar agregar la palabra a la línea actual
+        test_line = ' '.join(current_line + [word])
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        test_width = bbox[2] - bbox[0]
+
+        if test_width <= max_width:
+            current_line.append(word)
+        else:
+            # Si la línea actual tiene palabras, guardarla
+            if current_line:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                # Si una sola palabra es muy larga, dividirla
+                lines.append(word)
+
+    # Agregar la última línea
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    return lines
+
+
+def draw_multiline_text_with_outline(draw, position, lines, font, fill_color=(255, 255, 255), outline_color=(0, 0, 0), outline_width=2, line_spacing=5):
+    """
+    Dibuja texto multilínea con contorno.
+
+    Args:
+        draw: Objeto ImageDraw
+        position: Tupla (x, y) con la posición inicial del texto
+        lines: Lista de líneas de texto
+        font: Fuente a usar
+        fill_color: Color del texto principal
+        outline_color: Color del contorno
+        outline_width: Grosor del contorno
+        line_spacing: Espacio entre líneas en pixels
+    """
+    x, y = position
+
+    for i, line in enumerate(lines):
+        # Calcular altura de la línea
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_height = bbox[3] - bbox[1]
+
+        # Posición Y de esta línea
+        line_y = y + i * (line_height + line_spacing)
+
+        # Dibujar la línea con contorno
+        draw_text_with_outline(draw, (x, line_y), line, font, fill_color, outline_color, outline_width)
+
+
 def create_card_image(image_paths, title, folio_number, label_font_size=32):
     """
     Genera una tabla de lotería completa con 16 imágenes en cuadrícula 4x4.
@@ -203,18 +280,43 @@ def create_card_image(image_paths, title, folio_number, label_font_size=32):
                         except:
                             font_label = ImageFont.load_default()
 
-                    # Calcular posición del texto (centrado horizontalmente, parte inferior de la celda)
-                    label_bbox = draw.textbbox((0, 0), filename, font=font_label)
-                    label_width = label_bbox[2] - label_bbox[0]
-                    label_height = label_bbox[3] - label_bbox[1]
-                    label_x = cell_x + (cell_width - label_width) // 2
-                    label_y = cell_y + cell_height - LABEL_PADDING_BOTTOM - label_height
+                    # Calcular ancho máximo para el texto (con padding a los lados)
+                    max_text_width = cell_width - 20  # 10px padding a cada lado
 
-                    # Dibujar texto con contorno para máxima legibilidad
-                    draw_text_with_outline(draw, (label_x, label_y), filename, font_label,
-                                         fill_color=(255, 255, 255),
-                                         outline_color=(0, 0, 0),
-                                         outline_width=LABEL_OUTLINE_WIDTH)
+                    # Dividir texto en múltiples líneas si es necesario
+                    text_lines = wrap_text(filename, font_label, max_text_width, draw)
+
+                    # Calcular altura total necesaria para todas las líneas
+                    total_text_height = 0
+                    line_heights = []
+                    for line in text_lines:
+                        bbox = draw.textbbox((0, 0), line, font=font_label)
+                        line_height = bbox[3] - bbox[1]
+                        line_heights.append(line_height)
+                        total_text_height += line_height
+
+                    # Agregar espaciado entre líneas
+                    line_spacing = 5
+                    if len(text_lines) > 1:
+                        total_text_height += (len(text_lines) - 1) * line_spacing
+
+                    # Calcular posición Y inicial (ajustada para centrar todo el bloque de texto)
+                    label_y = cell_y + cell_height - LABEL_PADDING_BOTTOM - total_text_height
+
+                    # Dibujar cada línea centrada horizontalmente
+                    current_y = label_y
+                    for i, line in enumerate(text_lines):
+                        bbox = draw.textbbox((0, 0), line, font=font_label)
+                        line_width = bbox[2] - bbox[0]
+                        line_x = cell_x + (cell_width - line_width) // 2
+
+                        # Dibujar texto con contorno para máxima legibilidad
+                        draw_text_with_outline(draw, (line_x, current_y), line, font_label,
+                                             fill_color=(255, 255, 255),
+                                             outline_color=(0, 0, 0),
+                                             outline_width=LABEL_OUTLINE_WIDTH)
+
+                        current_y += line_heights[i] + line_spacing
 
                 img.close()
 
@@ -222,6 +324,147 @@ def create_card_image(image_paths, title, folio_number, label_font_size=32):
                 print(f"⚠️  Error procesando imagen {image_paths[image_index]}: {e}")
 
             image_index += 1
+
+    return canvas
+
+
+def create_deck_page(image_paths, label_font_size=32, page_number=None):
+    """
+    Genera una página con cartas individuales del deck en cuadrícula 4x4.
+
+    Args:
+        image_paths (list): Lista de hasta 16 rutas a imágenes para esta página
+        label_font_size (int): Tamaño de fuente para las leyendas
+        page_number (int): Número de página del deck (opcional)
+
+    Returns:
+        PIL.Image: Imagen de la página del deck
+    """
+    # Crear lienzo blanco
+    canvas = Image.new('RGB', (PAGE_WIDTH, PAGE_HEIGHT), COLOR_BACKGROUND)
+    draw = ImageDraw.Draw(canvas)
+
+    # Calcular espacio disponible (sin título ni folio, más espacio)
+    available_width = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
+    available_height = PAGE_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM
+
+    # Calcular tamaño de cada celda (4x4)
+    cell_width = (available_width - (GRID_SIZE - 1) * GAP_BETWEEN_IMAGES) // GRID_SIZE
+    cell_height = (available_height - (GRID_SIZE - 1) * GAP_BETWEEN_IMAGES) // GRID_SIZE
+
+    # Constantes para el borde decorativo
+    CARD_BORDER_WIDTH = 5  # Borde más grueso que en tablas
+    CARD_BORDER_COLOR = (0, 0, 0)  # Negro
+
+    # Espacio interior (imagen + leyenda)
+    inner_width = cell_width - (2 * CARD_BORDER_WIDTH) - 10  # -10 para padding
+    inner_height = cell_height - (2 * CARD_BORDER_WIDTH) - 10
+
+    # Espacio para leyenda
+    legend_height = 50  # Espacio reservado para el texto
+    image_height = inner_height - legend_height
+
+    # Posición inicial de la cuadrícula
+    grid_start_x = MARGIN_LEFT
+    grid_start_y = MARGIN_TOP
+
+    # Generar cuadrícula 4x4
+    for idx, img_path in enumerate(image_paths):
+        if idx >= 16:  # Solo 16 cartas por página
+            break
+
+        row = idx // GRID_SIZE
+        col = idx % GRID_SIZE
+
+        try:
+            # Cargar imagen
+            img = Image.open(img_path)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+
+            # Calcular posición de la celda
+            cell_x = grid_start_x + col * (cell_width + GAP_BETWEEN_IMAGES)
+            cell_y = grid_start_y + row * (cell_height + GAP_BETWEEN_IMAGES)
+
+            # Dibujar borde decorativo (doble línea)
+            # Borde exterior
+            draw.rectangle(
+                [cell_x, cell_y, cell_x + cell_width, cell_y + cell_height],
+                outline=CARD_BORDER_COLOR,
+                width=CARD_BORDER_WIDTH
+            )
+
+            # Borde interior (efecto doble)
+            draw.rectangle(
+                [cell_x + 8, cell_y + 8,
+                 cell_x + cell_width - 8, cell_y + cell_height - 8],
+                outline=CARD_BORDER_COLOR,
+                width=2
+            )
+
+            # Redimensionar imagen
+            resized_img = resize_image_to_fit(img, inner_width, image_height)
+
+            # Posicionar imagen (centrada en el espacio disponible)
+            img_x = cell_x + CARD_BORDER_WIDTH + 5
+            img_y = cell_y + CARD_BORDER_WIDTH + 5
+            canvas.paste(resized_img, (img_x, img_y))
+
+            # Agregar leyenda
+            filename = Path(img_path).stem
+            if filename:
+                try:
+                    font_label = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", label_font_size)
+                except:
+                    try:
+                        font_label = ImageFont.truetype("Arial.ttf", label_font_size)
+                    except:
+                        font_label = ImageFont.load_default()
+
+                # Calcular ancho máximo para el texto (considerando bordes y padding)
+                max_text_width = cell_width - (2 * CARD_BORDER_WIDTH) - 20  # Bordes + padding
+
+                # Dividir texto en múltiples líneas si es necesario
+                text_lines = wrap_text(filename, font_label, max_text_width, draw)
+
+                # Calcular altura total necesaria para todas las líneas
+                total_text_height = 0
+                line_heights = []
+                for line in text_lines:
+                    bbox = draw.textbbox((0, 0), line, font=font_label)
+                    line_height = bbox[3] - bbox[1]
+                    line_heights.append(line_height)
+                    total_text_height += line_height
+
+                # Agregar espaciado entre líneas
+                line_spacing = 5
+                if len(text_lines) > 1:
+                    total_text_height += (len(text_lines) - 1) * line_spacing
+
+                # Calcular posición Y inicial (ajustada para todo el bloque de texto)
+                label_y = cell_y + cell_height - LABEL_PADDING_BOTTOM - total_text_height - CARD_BORDER_WIDTH
+
+                # Dibujar cada línea centrada horizontalmente
+                current_y = label_y
+                for i, line in enumerate(text_lines):
+                    bbox = draw.textbbox((0, 0), line, font=font_label)
+                    line_width = bbox[2] - bbox[0]
+                    line_x = cell_x + (cell_width - line_width) // 2
+
+                    # Dibujar texto con contorno
+                    draw_text_with_outline(
+                        draw, (line_x, current_y), line, font_label,
+                        fill_color=(255, 255, 255),
+                        outline_color=(0, 0, 0),
+                        outline_width=LABEL_OUTLINE_WIDTH
+                    )
+
+                    current_y += line_heights[i] + line_spacing
+
+            img.close()
+
+        except Exception as e:
+            print(f"⚠️  Error procesando imagen {img_path}: {e}")
 
     return canvas
 
@@ -253,15 +496,16 @@ def load_images_from_uploads(uploaded_files):
     return temp_dir, image_paths
 
 
-def generate_loteria_pdf(uploaded_files, cantidad_tablas=10, nombre_loteria="Lotería Mexicana", label_font_size=32):
+def generate_loteria_pdf(uploaded_files, cantidad_tablas=10, nombre_loteria="Lotería Mexicana", label_font_size=32, include_deck=True):
     """
-    Genera PDF de lotería y lo retorna como bytes.
+    Genera PDF de lotería con deck de cartas y tablas.
 
     Args:
         uploaded_files: Lista de archivos de imagen subidos
         cantidad_tablas (int): Número de tablas a generar
         nombre_loteria (str): Título de la lotería
         label_font_size (int): Tamaño de fuente de leyendas
+        include_deck (bool): Si True, incluye páginas de deck antes de las tablas
 
     Returns:
         bytes: Contenido del PDF generado
@@ -279,11 +523,28 @@ def generate_loteria_pdf(uploaded_files, cantidad_tablas=10, nombre_loteria="Lot
                 f"Se necesitan al menos {IMAGES_PER_CARD} imágenes, pero solo se encontraron {len(all_images)}."
             )
 
-        # Crear directorio temporal para tablas
-        cards_temp_dir = tempfile.mkdtemp()
-        temp_card_paths = []
+        # Crear directorio temporal para todas las páginas
+        pages_temp_dir = tempfile.mkdtemp()
+        all_page_paths = []
 
-        # Generar tablas
+        # ===== GENERAR PÁGINAS DE DECK =====
+        if include_deck:
+            num_deck_pages = (len(all_images) + 15) // 16  # Redondear hacia arriba
+
+            for page_num in range(num_deck_pages):
+                start_idx = page_num * 16
+                end_idx = min(start_idx + 16, len(all_images))
+                page_images = all_images[start_idx:end_idx]
+
+                # Crear página de deck
+                deck_page = create_deck_page(page_images, label_font_size, page_num + 1)
+
+                # Guardar página
+                deck_page_path = os.path.join(pages_temp_dir, f"deck_page_{page_num + 1:03d}.png")
+                deck_page.save(deck_page_path, dpi=(300, 300))
+                all_page_paths.append(deck_page_path)
+
+        # ===== GENERAR TABLAS DE LOTERÍA =====
         for i in range(1, cantidad_tablas + 1):
             # Seleccionar 16 imágenes aleatorias sin duplicados
             selected_images = random.sample(all_images, IMAGES_PER_CARD)
@@ -292,21 +553,21 @@ def generate_loteria_pdf(uploaded_files, cantidad_tablas=10, nombre_loteria="Lot
             card_image = create_card_image(selected_images, nombre_loteria, i, label_font_size)
 
             # Guardar tabla temporalmente como PNG
-            temp_card_path = os.path.join(cards_temp_dir, f"tabla_{i:03d}.png")
+            temp_card_path = os.path.join(pages_temp_dir, f"tabla_{i:03d}.png")
             card_image.save(temp_card_path, dpi=(300, 300))
-            temp_card_paths.append(temp_card_path)
+            all_page_paths.append(temp_card_path)
 
-        # Generar PDF en memoria
-        pdf_bytes = img2pdf.convert(temp_card_paths)
+        # ===== GENERAR PDF FINAL =====
+        pdf_bytes = img2pdf.convert(all_page_paths)
 
-        # Limpiar archivos temporales de tablas
-        for temp_path in temp_card_paths:
+        # Limpiar archivos temporales
+        for page_path in all_page_paths:
             try:
-                os.remove(temp_path)
+                os.remove(page_path)
             except:
                 pass
         try:
-            os.rmdir(cards_temp_dir)
+            os.rmdir(pages_temp_dir)
         except:
             pass
 

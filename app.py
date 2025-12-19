@@ -94,6 +94,13 @@ label_font_size = st.sidebar.slider(
     help="Tamaño del texto que muestra el nombre de cada imagen"
 )
 
+# Incluir páginas de deck
+include_deck = st.sidebar.checkbox(
+    "Incluir páginas de deck",
+    value=True,
+    help="Genera páginas con todas las cartas individuales antes de las tablas (con borde decorativo)"
+)
+
 # Información adicional en sidebar
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
@@ -172,7 +179,8 @@ if uploaded_files:
                             uploaded_files,
                             cantidad_tablas,
                             nombre_loteria,
-                            label_font_size
+                            label_font_size,
+                            include_deck
                         )
 
                         # Guardar en session state para persistencia
