@@ -182,7 +182,7 @@ def draw_multiline_text_with_outline(draw, position, lines, font, fill_color=(25
         draw_text_with_outline(draw, (x, line_y), line, font, fill_color, outline_color, outline_width)
 
 
-def create_card_image(image_paths, title, folio_number, label_font_size=32):
+def create_card_image(image_paths, title, folio_number, label_font_size=40):
     """
     Genera una tabla de lotería completa con 16 imágenes en cuadrícula 4x4.
 
@@ -328,7 +328,7 @@ def create_card_image(image_paths, title, folio_number, label_font_size=32):
     return canvas
 
 
-def create_deck_page(image_paths, label_font_size=32, page_number=None):
+def create_deck_page(image_paths, label_font_size=40, page_number=None):
     """
     Genera una página con cartas individuales del deck en cuadrícula 4x4.
 
@@ -496,7 +496,7 @@ def load_images_from_uploads(uploaded_files):
     return temp_dir, image_paths
 
 
-def generate_loteria_pdf(uploaded_files, cantidad_tablas=10, nombre_loteria="Lotería Mexicana", label_font_size=32, include_deck=True):
+def generate_loteria_pdf(uploaded_files, cantidad_tablas=10, nombre_loteria="Lotería Mexicana", label_font_size=40, include_deck=True):
     """
     Genera PDF de lotería con deck de cartas y tablas.
 

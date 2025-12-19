@@ -89,8 +89,8 @@ nombre_loteria = st.sidebar.text_input(
 label_font_size = st.sidebar.slider(
     "Tamaño de fuente",
     min_value=16,
-    max_value=48,
-    value=32,
+    max_value=64,
+    value=40,
     help="Tamaño del texto que muestra el nombre de cada imagen"
 )
 
